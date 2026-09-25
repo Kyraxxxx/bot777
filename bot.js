@@ -41,7 +41,7 @@ const ticketRoleCache = new Map();
 
 const commands = [
     new SlashCommandBuilder()
-        .setName('painel')
+        .setName('paineldados')
         .setDescription('Envia o painel fixo de entrega de dados.')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
@@ -99,7 +99,6 @@ client.on('interactionCreate', async interaction => {
         const embedsParaEnviar = [];
 
         if (imagem) {
-            // Primeira Embed: Título, Subtítulo e a Imagem Banner
             const embedTop = new EmbedBuilder()
                 .setColor(cor)
                 .setTitle(titulo)
@@ -109,7 +108,6 @@ client.on('interactionCreate', async interaction => {
                 embedTop.setDescription(subtitulo);
             }
 
-            // Segunda Embed: A descrição detalhada do produto
             const embedBottom = new EmbedBuilder()
                 .setColor(cor)
                 .setDescription(descricao)
@@ -117,7 +115,6 @@ client.on('interactionCreate', async interaction => {
 
             embedsParaEnviar.push(embedTop, embedBottom);
         } else {
-            // Embed única padrão caso não haja imagem
             const customEmbed = new EmbedBuilder()
                 .setColor(cor)
                 .setTitle(titulo)
@@ -136,7 +133,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    if (interaction.isChatInputCommand() && interaction.commandName === 'painel') {
+    if (interaction.isChatInputCommand() && interaction.commandName === 'paineldados') {
         const embedPainel = new EmbedBuilder()
             .setColor('#1E1F22')
             .setTitle('⚙️ | Central de Entrega de Dados')
