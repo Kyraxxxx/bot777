@@ -47,12 +47,13 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('embed')
-        .setDescription('Cria e envia uma Embed personalizada no canal.')
+        .setDescription('Cria e envia uma Embed personalizada com imagem superior.')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addStringOption(opt => opt.setName('titulo').setDescription('Título da Embed').setRequired(true))
-        .addStringOption(opt => opt.setName('descricao').setDescription('Conteúdo/Texto da Embed (use \\n para quebrar linha)').setRequired(true))
-        .addStringOption(opt => opt.setName('cor').setDescription('Cor Hexadecimal (ex: #1E1F22 ou #FF0000)').setRequired(false))
-        .addStringOption(opt => opt.setName('imagem').setDescription('URL da imagem/banner').setRequired(false)),
+        .addStringOption(opt => opt.setName('titulo').setDescription('Título principal').setRequired(true))
+        .addStringOption(opt => opt.setName('descricao').setDescription('Conteúdo/Texto (use \\n para quebrar linha)').setRequired(true))
+        .addStringOption(opt => opt.setName('imagem').setDescription('URL da imagem/banner').setRequired(false))
+        .addStringOption(opt => opt.setName('subtitulo').setDescription('Subtítulo opcional (acima da imagem)').setRequired(false))
+        .addStringOption(opt => opt.setName('cor').setDescription('Cor Hexadecimal (ex: #1E1F22)').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('painelticket')
@@ -73,9 +74,7 @@ client.once('ready', async () => {
     try {
         console.log('[BOT] Registrando comandos Slash no Discord...');
         if (GUILD_ID && GUILD_ID.length > 0) {
-            // Limpa comandos globais duplicados para não haver conflito
             await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
-            // Registra os comandos apenas no teu servidor (atualização instantânea)
             await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
             console.log('[BOT] Comandos sincronizados no servidor sem duplicações!');
         } else {
@@ -91,22 +90,49 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'embed') {
         const titulo = interaction.options.getString('titulo');
+        const subtitulo = interaction.options.getString('subtitulo');
         const descricaoRaw = interaction.options.getString('descricao');
         const cor = interaction.options.getString('cor') || '#1E1F22';
         const imagem = interaction.options.getString('imagem');
 
         const descricao = descricaoRaw.replace(/\\n/g, '\n');
+        const embedsParaEnviar = [];
 
-        const customEmbed = new EmbedBuilder()
-            .setTitle(titulo)
-            .setDescription(descricao)
-            .setColor(cor)
-            .setTimestamp();
+        if (imagem) {
+            // Primeira Embed: Título, Subtítulo e a Imagem Banner
+            const embedTop = new EmbedBuilder()
+                .setColor(cor)
+                .setTitle(titulo)
+                .setImage(imagem);
 
-        if (imagem) customEmbed.setImage(imagem);
+            if (subtitulo) {
+                embedTop.setDescription(subtitulo);
+            }
+
+            // Segunda Embed: A descrição detalhada do produto
+            const embedBottom = new EmbedBuilder()
+                .setColor(cor)
+                .setDescription(descricao)
+                .setTimestamp();
+
+            embedsParaEnviar.push(embedTop, embedBottom);
+        } else {
+            // Embed única padrão caso não haja imagem
+            const customEmbed = new EmbedBuilder()
+                .setColor(cor)
+                .setTitle(titulo)
+                .setDescription(descricao)
+                .setTimestamp();
+
+            if (subtitulo) {
+                customEmbed.setDescription(`${subtitulo}\n\n${descricao}`);
+            }
+
+            embedsParaEnviar.push(customEmbed);
+        }
 
         await interaction.reply({ content: '✅ Embed enviada no canal com sucesso!', flags: 64 });
-        await interaction.channel.send({ embeds: [customEmbed] });
+        await interaction.channel.send({ embeds: embedsParaEnviar });
         return;
     }
 
