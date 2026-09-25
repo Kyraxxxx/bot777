@@ -1,6 +1,5 @@
 /**
  * Bot Discord v14 - Painel de Entrega, Criador de Embeds e Tickets
- * Configurado para hospedagem 24/7 na Discloud
  */
 
 const { 
@@ -24,9 +23,6 @@ const {
     ChannelType
 } = require('discord.js');
 
-// -----------------------------------------------------------------
-// CONFIGURAÇÕES (VARIÁVEIS DE AMBIENTE DA DISCLOUD)
-// -----------------------------------------------------------------
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID || '';
@@ -40,13 +36,9 @@ const client = new Client({
     ] 
 });
 
-// Caches em memória
 const userTargetCache = new Map();
 const ticketRoleCache = new Map();
 
-// -----------------------------------------------------------------
-// REGISTRO DOS COMANDOS SLASH
-// -----------------------------------------------------------------
 const commands = [
     new SlashCommandBuilder()
         .setName('painel')
@@ -68,14 +60,11 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
-// -----------------------------------------------------------------
-// EVENTO READY & REGISTRO DE COMANDOS
-// -----------------------------------------------------------------
 client.once('ready', async () => {
-    console.log(`[DISCLOUD] Bot online com sucesso como: ${client.user.tag}`);
+    console.log(`[RAILWAY] Bot online com sucesso como: ${client.user.tag}`);
 
     if (!TOKEN || !CLIENT_ID) {
-        console.error('[ERRO] TOKEN ou CLIENT_ID ausentes nas variáveis da Discloud.');
+        console.error('[ERRO] TOKEN ou CLIENT_ID ausentes nas variáveis.');
         return;
     }
 
@@ -94,12 +83,8 @@ client.once('ready', async () => {
     }
 });
 
-// -----------------------------------------------------------------
-// GERENCIADOR DE INTERAÇÕES
-// -----------------------------------------------------------------
 client.on('interactionCreate', async interaction => {
 
-    // 1. COMANDO /embed
     if (interaction.isChatInputCommand() && interaction.commandName === 'embed') {
         const titulo = interaction.options.getString('titulo');
         const descricaoRaw = interaction.options.getString('descricao');
@@ -121,7 +106,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 2. COMANDO /painel
     if (interaction.isChatInputCommand() && interaction.commandName === 'painel') {
         const embedPainel = new EmbedBuilder()
             .setColor('#1E1F22')
@@ -146,7 +130,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 3. COMANDO /painelticket
     if (interaction.isChatInputCommand() && interaction.commandName === 'painelticket') {
         const roleMenu = new ActionRowBuilder().addComponents(
             new RoleSelectMenuBuilder()
@@ -162,7 +145,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // Seleção de Cargo de Atendente
     if (interaction.isRoleSelectMenu() && interaction.customId === 'select_cargo_atendente') {
         const roleId = interaction.values[0];
         ticketRoleCache.set(interaction.guild.id, roleId);
@@ -197,7 +179,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 4. ABERTURA DE TICKET
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_categoria_ticket') {
         const categoria = interaction.values[0];
         const user = interaction.user;
@@ -262,7 +243,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 5. ENCERRAMENTO DO TICKET
     if (interaction.isButton() && interaction.customId === 'btn_fechar_ticket') {
         await interaction.reply({ content: '🔒 Este ticket será arquivado em 5 segundos...' });
         setTimeout(async () => {
@@ -273,7 +253,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 6. FLUXO DO PAINEL DE ENTREGA
     if (interaction.isButton() && interaction.customId === 'btn_iniciar_entrega') {
         const selectUserRow = new ActionRowBuilder().addComponents(
             new UserSelectMenuBuilder()
@@ -375,25 +354,23 @@ client.on('interactionCreate', async interaction => {
             const collector = dmMessage.createMessageComponentCollector({ time: 86400000 });
             collector.on('collect', async i => {
                 if (i.customId === 'btn_copiar_dados') {
-                    await i.reply({ content: `\`\`\`text\n${formatadoFull}\n\`\`\`, flags: 64 });
+                    await i.reply({ content: `\`\`\`text\n${formatadoFull}\n\`\`\``, flags: 64 });
                 }
             });
 
             userTargetCache.delete(interaction.user.id);
-            await interaction.editReply({ content: `✅ Dados entregues com sucesso na DM de <@${targetUserId}>!` });
+            const msgSucesso = '✅ Dados entregues com sucesso na DM de <@' + targetUserId + '>!';
+            await interaction.editReply({ content: msgSucesso });
 
         } catch (error) {
             console.error('[ERRO DM]:', error);
-            await interaction.editReply({ content: `⚠️ Não foi possível enviar a DM para <@${targetUserId}>.` });
+            await interaction.editReply({ content: '⚠️ Não foi possível enviar a DM para o cliente.' });
         }
     }
 });
 
-// -----------------------------------------------------------------
-// AUTENTICAÇÃO
-// -----------------------------------------------------------------
 if (!TOKEN) {
-    console.error('[ERRO CRÍTICO] Defina a variável TOKEN no painel da Discloud!');
+    console.error('[ERRO CRÍTICO] Defina a variável TOKEN no painel!');
 } else {
-    client.login(TOKEN).catch(err => console.error('[ERRO DISCLOUD LOGIN]:', err));
+    client.login(TOKEN).catch(err => console.error('[ERRO LOGIN]:', err));
 }
