@@ -359,7 +359,7 @@ client.on('interactionCreate', async interaction => {
             });
 
             userTargetCache.delete(interaction.user.id);
-            const msgSucesso = '✅ Dados entregues com sucesso na DM de <@' + targetUserId + '>!';
+            const msgSucesso = '✅ Dados entregues com sucesso na DM de <@' + targetUserId + '>';
             await interaction.editReply({ content: msgSucesso });
 
         } catch (error) {
