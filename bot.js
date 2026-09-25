@@ -73,11 +73,15 @@ client.once('ready', async () => {
     try {
         console.log('[BOT] Registrando comandos Slash no Discord...');
         if (GUILD_ID && GUILD_ID.length > 0) {
+            // Limpa comandos globais duplicados para não haver conflito
+            await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
+            // Registra os comandos apenas no teu servidor (atualização instantânea)
             await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+            console.log('[BOT] Comandos sincronizados no servidor sem duplicações!');
         } else {
             await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+            console.log('[BOT] Comandos sincronizados globalmente!');
         }
-        console.log('[BOT] Todos os comandos foram sincronizados!');
     } catch (error) {
         console.error('[ERRO REST]:', error);
     }
