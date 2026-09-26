@@ -27,8 +27,8 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID || '';
 
-// URL da imagem de entrega
-const BANNER_ENTREGA = process.env.BANNER_URL || 'https://i.imgur.com/vHq1vK1.png';
+// URL da imagem de entrega com a extensão .png para o Discord carregar corretamente
+const BANNER_ENTREGA = process.env.BANNER_URL || 'https://imgur.com/PWqEHvg.png';
 
 const client = new Client({ 
     intents: [
