@@ -1,5 +1,5 @@
 /**
- * Bot Discord v14 - Painel de Entrega, Criador de Embeds e Tickets
+ * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets e Moderação
  */
 
 const { 
@@ -26,6 +26,9 @@ const {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID || '';
+
+// URL da imagem de entrega
+const BANNER_ENTREGA = process.env.BANNER_URL || 'https://i.imgur.com/vHq1vK1.png';
 
 const client = new Client({ 
     intents: [
@@ -58,7 +61,29 @@ const commands = [
     new SlashCommandBuilder()
         .setName('painelticket')
         .setDescription('Envia o painel de atendimento/tickets no canal.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('clean')
+        .setDescription('Limpa uma quantidade específica de mensagens no canal.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addIntegerOption(opt => 
+            opt.setName('quantidade')
+               .setDescription('Quantidade de mensagens para apagar (1 a 100)')
+               .setRequired(true)
+               .setMinValue(1)
+               .setMaxValue(100)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('lock')
+        .setDescription('Bloqueia o canal atual para que membros não enviem mensagens.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('unlock')
+        .setDescription('Desbloqueia o canal atual permitindo mensagens novamente.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
@@ -88,6 +113,69 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
 
+    // --- COMANDO /CLEAN ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'clean') {
+        const quantidade = interaction.options.getInteger('quantidade');
+
+        try {
+            const deleted = await interaction.channel.bulkDelete(quantidade, true);
+            await interaction.reply({
+                content: `🧹 **${deleted.size}** mensagem(ns) apagada(s) com sucesso!`,
+                flags: 64
+            });
+        } catch (error) {
+            console.error('[ERRO CLEAN]:', error);
+            await interaction.reply({
+                content: '❌ Ocorreu um erro ao tentar apagar as mensagens. (Mensagens com mais de 14 dias não podem ser apagadas em massa).',
+                flags: 64
+            });
+        }
+        return;
+    }
+
+    // --- COMANDO /LOCK ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'lock') {
+        try {
+            await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
+                SendMessages: false
+            });
+
+            const embedLock = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('🔒 Canal Bloqueado')
+                .setDescription('Este canal foi bloqueado pela moderação. Ninguém pode enviar mensagens no momento.')
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embedLock] });
+        } catch (error) {
+            console.error('[ERRO LOCK]:', error);
+            await interaction.reply({ content: '❌ Erro ao bloquear o canal.', flags: 64 });
+        }
+        return;
+    }
+
+    // --- COMANDO /UNLOCK ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'unlock') {
+        try {
+            await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
+                SendMessages: null
+            });
+
+            const embedUnlock = new EmbedBuilder()
+                .setColor('#57F287')
+                .setTitle('🔓 Canal Desbloqueado')
+                .setDescription('O canal foi desbloqueado! O envio de mensagens está liberado novamente.')
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embedUnlock] });
+        } catch (error) {
+            console.error('[ERRO UNLOCK]:', error);
+            await interaction.reply({ content: '❌ Erro ao desbloquear o canal.', flags: 64 });
+        }
+        return;
+    }
+
+    // --- COMANDO /EMBED ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'embed') {
         const titulo = interaction.options.getString('titulo');
         const subtitulo = interaction.options.getString('subtitulo');
@@ -133,19 +221,20 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // --- COMANDO /PAINELDADOS ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'paineldados') {
         const embedPainel = new EmbedBuilder()
             .setColor('#FF6B00')
             .setTitle('🟧 Central de Entrega de Dados')
             .setDescription(
                 `> ✨ *Sistema automatizado e seguro para despacho de credenciais e produtos.*\n\n` +
-                `🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧\n\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
                 `🔸 **COMO UTILIZAR:**\n\n` +
                 `1️⃣ **Clique no botão abaixo** para abrir o seletor.\n` +
                 `2️⃣ **Selecione o cliente** que irá receber o produto.\n` +
                 `3️⃣ **Preencha os dados** no formulário rápido.\n` +
                 `4️⃣ O bot fará a entrega **diretamente na DM do cliente**.\n\n` +
-                `🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧`
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
             )
             .setFooter({ text: '🔒 Módulo Restrito à Equipe de Staff' })
             .setTimestamp();
@@ -162,6 +251,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // --- PAINEL TICKET ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'painelticket') {
         const roleMenu = new ActionRowBuilder().addComponents(
             new RoleSelectMenuBuilder()
@@ -231,13 +321,13 @@ client.on('interactionCreate', async interaction => {
             name: threadName,
             autoArchiveDuration: 1440,
             type: ChannelType.PrivateThread,
-            reason: `Ticket de ${categoria} aberto por${user.tag}`
+            reason: `Ticket de ${categoria} aberto por ${user.tag}`
         }).catch(async () => {
             return await interaction.channel.threads.create({
                 name: threadName,
                 autoArchiveDuration: 1440,
                 type: ChannelType.PublicThread,
-                reason: `Ticket de ${categoria} aberto por${user.tag}`
+                reason: `Ticket de ${categoria} aberto por ${user.tag}`
             });
         });
 
@@ -266,7 +356,7 @@ client.on('interactionCreate', async interaction => {
                 .setEmoji('🔒')
         );
 
-        await thread.send({ content: `<@${user.id}>${mentionRole}`, embeds: [embedBoasVindas], components: [btnFechar] });
+        await thread.send({ content: `<@${user.id}> ${mentionRole}`, embeds: [embedBoasVindas], components: [btnFechar] });
 
         await interaction.followUp({
             content: `✅ Seu ticket de **${categoria}** foi criado: <#${thread.id}>`,
@@ -326,6 +416,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // --- ENVIO DA DM DO CLIENTE ---
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_preencher_dados') {
         await interaction.deferReply({ flags: 64 });
 
@@ -349,33 +440,37 @@ client.on('interactionCreate', async interaction => {
             cpf = parts[1].trim();
         }
 
-        const formatadoFull = `${cartaoPipe}\vert{}${bandeira}|${banco}\vert{}${level}`;
+        const formatadoFull = `${cartaoPipe}|${bandeira}|${banco}|${level}`;
 
+        // EMBED PRINCIPAL DE ENTREGA LIMPA E DECORADA NA DM
         const embedDM = new EmbedBuilder()
-            .setColor('#1E1F22')
+            .setColor('#FF6B00')
+            .setTitle('📦 OBRIGADO PELA SUA COMPRA!')
             .setDescription(
-                `💳 **Produto:**\n` +
-                `País: 🇧🇷 Brasil\n` +
-                `Cartão: \`${cartaoPipe}\`\n` +
-                `Bandeira: ${bandeira}\n` +
-                `Level: **${level}**\n` +
-                `Banco: **${banco}**\n` +
-                `Formatado:\n` +
-                `✅ \`${formatadoFull}\`\n\n` +
-                `🆔 **Dados do titular:**\n` +
-                `CPF: ${cpf}\n\n` +
-                `🆘 **Dados auxiliares:**\n` +
-                `Nome: ${titular}\n` +
-                `CPF: ${cpf}`
+                `Olá! Os seus dados foram gerados e entregues com sucesso.\n\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                `💳 **INFORMAÇÕES DO PRODUTO**\n` +
+                `• **País:** 🇧🇷 Brasil\n` +
+                `• **Cartão:** \`${cartaoPipe}\`\n` +
+                `• **Bandeira:** ${bandeira}\n` +
+                `• **Nível:** ${level}\n` +
+                `• **Banco:** ${banco}\n\n` +
+                `🆔 **TITULAR**\n` +
+                `• **Nome:** ${titular}\n` +
+                `• **CPF:** ${cpf}\n\n` +
+                `⚡ **FORMATO COMPLETO:**\n` +
+                `\`${formatadoFull}\`\n\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
             )
-            .setFooter({ text: 'Sistema de Entrega • Store' })
+            .setImage(BANNER_ENTREGA)
+            .setFooter({ text: 'Sistema de Entrega • 777 Store' })
             .setTimestamp();
 
         const btnRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('btn_copiar_dados')
-                .setLabel('Copiar Dados Formatados')
-                .setStyle(ButtonStyle.Primary)
+                .setLabel('Copiar Texto Formatado')
+                .setStyle(ButtonStyle.Success)
                 .setEmoji('📋')
         );
 
@@ -386,7 +481,7 @@ client.on('interactionCreate', async interaction => {
             const collector = dmMessage.createMessageComponentCollector({ time: 86400000 });
             collector.on('collect', async i => {
                 if (i.customId === 'btn_copiar_dados') {
-                    await i.reply({ content: `\`\`\`text\n${formatadoFull}\n\`\`\``, flags: 64 });
+                    await i.reply({ content: `${formatadoFull}`, flags: 64 });
                 }
             });
 
@@ -396,7 +491,7 @@ client.on('interactionCreate', async interaction => {
 
         } catch (error) {
             console.error('[ERRO DM]:', error);
-            await interaction.editReply({ content: '⚠️ Não foi possível enviar a DM para o cliente.' });
+            await interaction.editReply({ content: '⚠️ Não foi possível enviar a DM para o cliente. Verifique se as DMs dele estão abertas.' });
         }
     }
 });
