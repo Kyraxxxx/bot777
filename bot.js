@@ -135,22 +135,27 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'paineldados') {
         const embedPainel = new EmbedBuilder()
-            .setColor('#1E1F22')
-            .setTitle('⚙️ | Central de Entrega de Dados')
+            .setColor('#FF6B00')
+            .setTitle('🟧 Central de Entrega de Dados')
             .setDescription(
-                `Clique no botão abaixo para iniciar o processo de entrega de dados.\n\n` +
-                `1️⃣ Escolha o cliente que receberá a mensagem.\n` +
-                `2️⃣ Preencha as informações do produto no formulário.\n` +
-                `3️⃣ O bot enviará a mensagem formatada diretamente na DM do cliente.`
+                `> ✨ *Sistema automatizado e seguro para despacho de credenciais e produtos.*\n\n` +
+                `🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧\n\n` +
+                `🔸 **COMO UTILIZAR:**\n\n` +
+                `1️⃣ **Clique no botão abaixo** para abrir o seletor.\n` +
+                `2️⃣ **Selecione o cliente** que irá receber o produto.\n` +
+                `3️⃣ **Preencha os dados** no formulário rápido.\n` +
+                `4️⃣ O bot fará a entrega **diretamente na DM do cliente**.\n\n` +
+                `🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧🟧`
             )
-            .setFooter({ text: 'Sistema Restrito à Staff' })
+            .setFooter({ text: '🔒 Módulo Restrito à Equipe de Staff' })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('btn_iniciar_entrega')
-                .setLabel('📦 Entregar Dados')
+                .setLabel('Entregar Dados')
                 .setStyle(ButtonStyle.Success)
+                .setEmoji('📦')
         );
 
         await interaction.reply({ embeds: [embedPainel], components: [row] });
