@@ -1,5 +1,5 @@
 /**
- * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets e Moderação
+ * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets em Canais Privados e Moderação
  */
 
 const { 
@@ -27,7 +27,6 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID || '';
 
-// URL da imagem de entrega com a extensão .png para o Discord carregar corretamente
 const BANNER_ENTREGA = process.env.BANNER_URL || 'https://imgur.com/PWqEHvg.png';
 
 const client = new Client({ 
@@ -40,7 +39,8 @@ const client = new Client({
 });
 
 const userTargetCache = new Map();
-const ticketRoleCache = new Map();
+// Cache para guardar múltiplos cargos autorizados por servidor
+const ticketRolesCache = new Map();
 
 const commands = [
     new SlashCommandBuilder()
@@ -251,16 +251,18 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // --- PAINEL TICKET ---
+    // --- PAINEL TICKET (CONFIGURAÇÃO) ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'painelticket') {
         const roleMenu = new ActionRowBuilder().addComponents(
             new RoleSelectMenuBuilder()
                 .setCustomId('select_cargo_atendente')
-                .setPlaceholder('Selecione o cargo de Atendente/Staff para os tickets...')
+                .setPlaceholder('Selecione os cargos que terão acesso aos tickets...')
+                .setMinValues(1)
+                .setMaxValues(5) // Permite selecionar de 1 a 5 cargos
         );
 
         await interaction.reply({
-            content: '⚙️ **Configuração do Painel:** Selecione qual cargo será notificado quando um ticket for aberto:',
+            content: '⚙️ **Configuração do Painel:** Selecione qual(is) cargo(s) da equipe terão acesso e serão notificados nos tickets:',
             components: [roleMenu],
             flags: 64
         });
@@ -268,27 +270,27 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isRoleSelectMenu() && interaction.customId === 'select_cargo_atendente') {
-        const roleId = interaction.values[0];
-        ticketRoleCache.set(interaction.guild.id, roleId);
+        const roleIds = interaction.values;
+        ticketRolesCache.set(interaction.guild.id, roleIds);
 
         const embedTicketPainel = new EmbedBuilder()
-            .setColor('#2B2D31')
+            .setColor('#FF6B00')
             .setTitle('🎫 | Central de Atendimento')
             .setDescription(
-                `Precisa de ajuda ou deseja realizar uma compra? Abra um ticket abaixo!\n\n` +
+                `Precisa de suporte ou deseja realizar uma compra? Abra um ticket abaixo!\n\n` +
                 `📌 **Categorias disponíveis:**\n` +
-                `• ❓ **Dúvida:** Esclareça questões sobre nossos produtos.\n` +
-                `• 🛒 **Compra:** Adquira novos produtos diretamente com a Staff.\n` +
-                `• 📄 **Comprovante:** Envie o comprovante de pagamento do seu pedido.\n\n` +
-                `*Selecione a categoria desejada no menu abaixo:*`
+                `• ❓ **Dúvida:** Esclareça dúvidas sobre produtos ou serviços.\n` +
+                `• 🛒 **Compra:** Adquira produtos diretamente com a Staff.\n` +
+                `• 📄 **Comprovante:** Envie comprovantes de pagamento.\n\n` +
+                `*Selecione a opção desejada no menu abaixo para abrir um canal de atendimento exclusivo:*`
             )
-            .setFooter({ text: 'Suporte Oficial' })
+            .setFooter({ text: 'Atendimento Privado e Seguro' })
             .setTimestamp();
 
         const selectTicketMenu = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId('select_categoria_ticket')
-                .setPlaceholder('Selecione o tipo de atendimento...')
+                .setPlaceholder('Selecione a categoria de atendimento...')
                 .addOptions([
                     { label: 'Dúvida', value: 'Dúvida', description: 'Tirar dúvidas gerais', emoji: '❓' },
                     { label: 'Compra', value: 'Compra', description: 'Realizar um novo pedido', emoji: '🛒' },
@@ -301,80 +303,134 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    // --- CRIAÇÃO DE CANAL PRIVADO DE TICKET ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_categoria_ticket') {
         const categoria = interaction.values[0];
         const user = interaction.user;
-        const threadName = `ticket-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        const guild = interaction.guild;
 
-        await interaction.deferUpdate();
+        await interaction.deferReply({ flags: 64 });
 
-        const existingThread = interaction.channel.threads.cache.find(t => t.name === threadName && !t.archived);
-        if (existingThread) {
-            await interaction.followUp({
-                content: `❌ Você já possui um ticket aberto! Acesse ele aqui: <#${existingThread.id}>`,
-                flags: 64
+        const channelName = `ticket-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+        // Verifica se o usuário já possui um canal de ticket aberto
+        const existingChannel = guild.channels.cache.find(c => c.name === channelName);
+        if (existingChannel) {
+            await interaction.editReply({
+                content: `❌ Você já possui um ticket aberto! Acesse ele aqui: <#${existingChannel.id}>`
             });
             return;
         }
 
-        const thread = await interaction.channel.threads.create({
-            name: threadName,
-            autoArchiveDuration: 1440,
-            type: ChannelType.PrivateThread,
-            reason: `Ticket de ${categoria} aberto por ${user.tag}`
-        }).catch(async () => {
-            return await interaction.channel.threads.create({
-                name: threadName,
-                autoArchiveDuration: 1440,
-                type: ChannelType.PublicThread,
-                reason: `Ticket de ${categoria} aberto por ${user.tag}`
+        const roleIds = ticketRolesCache.get(guild.id) || [];
+
+        // Monta as permissões básicas: Ninguém vê (@everyone), apenas o Bot, o Cliente e as Roles selecionadas
+        const permissionOverwrites = [
+            {
+                id: guild.roles.everyone.id,
+                deny: [PermissionFlagsBits.ViewChannel]
+            },
+            {
+                id: user.id,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.AttachFiles,
+                    PermissionFlagsBits.ReadMessageHistory
+                ]
+            },
+            {
+                id: client.user.id,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.ManageChannels
+                ]
+            }
+        ];
+
+        // Adiciona a permissão para cada cargo configurado da equipe
+        roleIds.forEach(roleId => {
+            permissionOverwrites.push({
+                id: roleId,
+                allow: [
+                    PermissionFlagsBits.ViewChannel,
+                    PermissionFlagsBits.SendMessages,
+                    PermissionFlagsBits.AttachFiles,
+                    PermissionFlagsBits.ReadMessageHistory
+                ]
             });
         });
 
-        await thread.members.add(user.id);
+        try {
+            // Cria o canal de texto privado no servidor (na mesma categoria do painel, se houver)
+            const ticketChannel = await guild.channels.create({
+                name: channelName,
+                type: ChannelType.GuildText,
+                parent: interaction.channel.parentId || null,
+                permissionOverwrites: permissionOverwrites,
+                reason: `Ticket de ${categoria} aberto por ${user.tag}`
+            });
 
-        const roleId = ticketRoleCache.get(interaction.guild.id);
-        const mentionRole = roleId ? `<@&${roleId}>` : 'A equipe';
+            // Constrói a menção aos cargos configurados
+            const mentionsStaff = roleIds.length > 0 ? roleIds.map(r => `<@&${r}>`).join(' ') : 'Equipe';
 
-        const embedBoasVindas = new EmbedBuilder()
-            .setColor('#57F287')
-            .setTitle(`🎫 Atendimento: ${categoria}`)
-            .setDescription(
-                `Olá <@${user.id}>, bem-vindo ao seu ticket!\n\n` +
-                `• **Categoria:** ${categoria}\n` +
-                `• **Instruções:** Explique sua solicitação ou envie o comprovante/dados aqui no chat.\n\n` +
-                `${mentionRole} foi notificado e atenderá você em breve.`
-            )
-            .setFooter({ text: 'Clique no botão abaixo para encerrar o atendimento' })
-            .setTimestamp();
+            const embedBoasVindas = new EmbedBuilder()
+                .setColor('#FF6B00')
+                .setTitle(`🎫 Ticket Criado: ${categoria}`)
+                .setDescription(
+                    `Olá <@${user.id}>, bem-vindo ao seu atendimento exclusivo!\n\n` +
+                    `• **Cliente:** <@${user.id}>\n` +
+                    `• **Categoria:** ${categoria}\n` +
+                    `• **Instruções:** Detalhe o seu pedido ou envie o comprovante diretamente aqui no chat.\n\n` +
+                    `A equipe ${mentionsStaff} foi notificada e atenderá você em breve!`
+                )
+                .setFooter({ text: 'Clique no botão abaixo para excluir este canal de atendimento.' })
+                .setTimestamp();
 
-        const btnFechar = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('btn_fechar_ticket')
-                .setLabel('Fechar Ticket')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('🔒')
-        );
+            const btnFechar = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_fechar_ticket')
+                    .setLabel('Fechar e Apagar Ticket')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🔒')
+            );
 
-        await thread.send({ content: `<@${user.id}> ${mentionRole}`, embeds: [embedBoasVindas], components: [btnFechar] });
+            await ticketChannel.send({ 
+                content: `<@${user.id}> | ${mentionsStaff}`, 
+                embeds: [embedBoasVindas], 
+                components: [btnFechar] 
+            });
 
-        await interaction.followUp({
-            content: `✅ Seu ticket de **${categoria}** foi criado: <#${thread.id}>`,
-            flags: 64
-        });
+            await interaction.editReply({
+                content: `✅ Seu ticket de **${categoria}** foi criado com sucesso: <#${ticketChannel.id}>`
+            });
+
+        } catch (error) {
+            console.error('[ERRO CRIAR CANAL TICKET]:', error);
+            await interaction.editReply({
+                content: '❌ Erro ao criar o canal do ticket. Verifique se o bot tem a permissão "Gerenciar Canais".'
+            });
+        }
         return;
     }
 
+    // --- ENCERRAMENTO E EXCLUSÃO DO CANAL DE TICKET ---
     if (interaction.isButton() && interaction.customId === 'btn_fechar_ticket') {
-        await interaction.reply({ content: '🔒 Este ticket será arquivado em 5 segundos...' });
+        await interaction.reply({ content: '🔒 Este ticket será apagado em 5 segundos...' });
         setTimeout(async () => {
-            if (interaction.channel.isThread()) {
-                await interaction.channel.setArchived(true, 'Ticket fechado');
+            try {
+                if (interaction.channel) {
+                    await interaction.channel.delete('Ticket encerrado');
+                }
+            } catch (err) {
+                console.error('[ERRO EXCLUIR CANAL]:', err);
             }
         }, 5000);
         return;
     }
 
+    // --- ENTREGA DE DADOS (DEMAIS RECURSOS) ---
     if (interaction.isButton() && interaction.customId === 'btn_iniciar_entrega') {
         const selectUserRow = new ActionRowBuilder().addComponents(
             new UserSelectMenuBuilder()
@@ -442,7 +498,6 @@ client.on('interactionCreate', async interaction => {
 
         const formatadoFull = `${cartaoPipe}|${bandeira}|${banco}|${level}`;
 
-        // EMBED PRINCIPAL DE ENTREGA LIMPA E DECORADA NA DM
         const embedDM = new EmbedBuilder()
             .setColor('#FF6B00')
             .setTitle('📦 OBRIGADO PELA SUA COMPRA!')
