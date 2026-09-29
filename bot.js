@@ -1,5 +1,5 @@
 /**
- * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets em Canais Privados e Moderação
+ * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets Privados, Moderação e Configuração de Canais de Venda
  */
 
 const { 
@@ -39,7 +39,6 @@ const client = new Client({
 });
 
 const userTargetCache = new Map();
-// Cache para guardar múltiplos cargos autorizados por servidor
 const ticketRolesCache = new Map();
 
 const commands = [
@@ -62,6 +61,11 @@ const commands = [
         .setName('painelticket')
         .setDescription('Envia o painel de atendimento/tickets no canal.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('configultimate')
+        .setDescription('Configura o canal atual como vitrine de vendas (apenas leitura para membros).')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 
     new SlashCommandBuilder()
         .setName('clean')
@@ -112,6 +116,50 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+
+    // --- COMANDO /CONFIGULTIMATE ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'configultimate') {
+        try {
+            await interaction.deferReply({ flags: 64 });
+
+            // Aplica as restrições no cargo @everyone para o canal atual
+            await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
+                ViewChannel: true,
+                ReadMessageHistory: true,
+                SendMessages: false,
+                SendMessagesInThreads: false,
+                CreatePublicThreads: false,
+                CreatePrivateThreads: false,
+                AttachFiles: false,
+                AddReactions: false,
+                UseExternalEmojis: false
+            });
+
+            const embedSucesso = new EmbedBuilder()
+                .setColor('#FF6B00')
+                .setTitle('🛒 Canal Configurado para Vendas!')
+                .setDescription(
+                    `Este canal foi configurado com sucesso como **Canal de Vendas/Vitrine**.\n\n` +
+                    `🔒 **Permissões do @everyone ajustadas:**\n` +
+                    `• ✅ Visualizar o canal e histórico de mensagens\n` +
+                    `• ❌ Enviar mensagens\n` +
+                    `• ❌ Criar ou falar em tópicos (threads)\n` +
+                    `• ❌ Anexar arquivos e imagens\n` +
+                    `• ❌ Adicionar reações`
+                )
+                .setFooter({ text: 'Configuração concluída pela equipe de Administração.' })
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [embedSucesso] });
+
+        } catch (error) {
+            console.error('[ERRO CONFIGULTIMATE]:', error);
+            await interaction.editReply({
+                content: '❌ Ocorreu um erro ao tentar configurar as permissões do canal. Verifique se o bot possui a permissão "Gerenciar Canais" ou "Gerenciar Permissões".'
+            });
+        }
+        return;
+    }
 
     // --- COMANDO /CLEAN ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'clean') {
@@ -258,7 +306,7 @@ client.on('interactionCreate', async interaction => {
                 .setCustomId('select_cargo_atendente')
                 .setPlaceholder('Selecione os cargos que terão acesso aos tickets...')
                 .setMinValues(1)
-                .setMaxValues(5) // Permite selecionar de 1 a 5 cargos
+                .setMaxValues(5)
         );
 
         await interaction.reply({
@@ -313,7 +361,6 @@ client.on('interactionCreate', async interaction => {
 
         const channelName = `ticket-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
 
-        // Verifica se o usuário já possui um canal de ticket aberto
         const existingChannel = guild.channels.cache.find(c => c.name === channelName);
         if (existingChannel) {
             await interaction.editReply({
@@ -324,7 +371,6 @@ client.on('interactionCreate', async interaction => {
 
         const roleIds = ticketRolesCache.get(guild.id) || [];
 
-        // Monta as permissões básicas: Ninguém vê (@everyone), apenas o Bot, o Cliente e as Roles selecionadas
         const permissionOverwrites = [
             {
                 id: guild.roles.everyone.id,
@@ -349,7 +395,6 @@ client.on('interactionCreate', async interaction => {
             }
         ];
 
-        // Adiciona a permissão para cada cargo configurado da equipe
         roleIds.forEach(roleId => {
             permissionOverwrites.push({
                 id: roleId,
@@ -363,7 +408,6 @@ client.on('interactionCreate', async interaction => {
         });
 
         try {
-            // Cria o canal de texto privado no servidor (na mesma categoria do painel, se houver)
             const ticketChannel = await guild.channels.create({
                 name: channelName,
                 type: ChannelType.GuildText,
@@ -372,7 +416,6 @@ client.on('interactionCreate', async interaction => {
                 reason: `Ticket de ${categoria} aberto por ${user.tag}`
             });
 
-            // Constrói a menção aos cargos configurados
             const mentionsStaff = roleIds.length > 0 ? roleIds.map(r => `<@&${r}>`).join(' ') : 'Equipe';
 
             const embedBoasVindas = new EmbedBuilder()
@@ -415,7 +458,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // --- ENCERRAMENTO E EXCLUSÃO DO CANAL DE TICKET ---
+    // --- ENCERRAMENTO DE TICKET ---
     if (interaction.isButton() && interaction.customId === 'btn_fechar_ticket') {
         await interaction.reply({ content: '🔒 Este ticket será apagado em 5 segundos...' });
         setTimeout(async () => {
@@ -430,7 +473,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // --- ENTREGA DE DADOS (DEMAIS RECURSOS) ---
+    // --- ENTREGA DE DADOS ---
     if (interaction.isButton() && interaction.customId === 'btn_iniciar_entrega') {
         const selectUserRow = new ActionRowBuilder().addComponents(
             new UserSelectMenuBuilder()
@@ -472,7 +515,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // --- ENVIO DA DM DO CLIENTE ---
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'modal_preencher_dados') {
         await interaction.deferReply({ flags: 64 });
 
