@@ -24,6 +24,8 @@ const {
     ChannelType
 } = require('discord.js');
 
+const { joinVoiceChannel, VoiceConnectionStatus } = require('@discordjs/voice');
+
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
@@ -41,7 +43,8 @@ const client = new Client({
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
     ] 
 });
 
@@ -94,7 +97,12 @@ const commands = [
     new SlashCommandBuilder()
         .setName('unlock')
         .setDescription('Desbloqueia o canal atual permitindo mensagens novamente.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('on')
+        .setDescription('Cria o canal de voz da loja e conecta o bot nele.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
@@ -127,6 +135,47 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+
+    // --- COMANDO /ON ---
+    if (interaction.isChatInputCommand() && interaction.commandName === 'on') {
+        try {
+            await interaction.deferReply({ flags: 64 });
+
+            const guild = interaction.guild;
+            const channelName = 'discord.gg/ultimatescc';
+
+            // Procura canal existente com o mesmo nome ou cria um novo
+            let voiceChannel = guild.channels.cache.find(c => c.name === channelName && c.type === ChannelType.GuildVoice);
+
+            if (!voiceChannel) {
+                voiceChannel = await guild.channels.create({
+                    name: channelName,
+                    type: ChannelType.GuildVoice,
+                    reason: 'Canal de voz criado pelo comando /on'
+                });
+            }
+
+            // Conecta ao canal de voz sem mutar
+            joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+                selfMute: false,
+                selfDeaf: false
+            });
+
+            await interaction.editReply({
+                content: `✅ Loja marcada como **ONLINE**! Canal de voz <#${voiceChannel.id}> criado e bot conectado com sucesso.`
+            });
+
+        } catch (error) {
+            console.error('[ERRO /ON]:', error);
+            await interaction.editReply({
+                content: '❌ Ocorreu um erro ao executar o comando /on. Verifique se o bot possui permissão para gerenciar e conectar em canais de voz.'
+            });
+        }
+        return;
+    }
 
     // --- COMANDO /CONFIGULTIMATE ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'configultimate') {
