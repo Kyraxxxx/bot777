@@ -1,5 +1,6 @@
 /**
- * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets Privados, Moderação e Configuração de Canais de Venda
+ * Bot Discord v14 - Painel de Entrega, Criador de Embeds, Tickets Privados, Moderação e Vitrine de Vendas
+ * Suporte a múltiplas variáveis de Guild (GUILD_ID, GUILD2_ID, etc.) no Railway.
  */
 
 const { 
@@ -25,7 +26,13 @@ const {
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID || '';
+
+// Pega os IDs das variáveis separadas
+const GUILD_ID_1 = process.env.GUILD_ID || '';
+const GUILD_ID_2 = process.env.GUILD2_ID || '';
+
+// Junta todos os IDs válidos em uma lista
+const guildIds = [GUILD_ID_1, GUILD_ID_2].filter(id => id.trim().length > 0);
 
 const BANNER_ENTREGA = process.env.BANNER_URL || 'https://imgur.com/PWqEHvg.png';
 
@@ -102,11 +109,15 @@ client.once('ready', async () => {
 
     try {
         console.log('[BOT] Registrando comandos Slash no Discord...');
-        if (GUILD_ID && GUILD_ID.length > 0) {
-            await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
-            await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-            console.log('[BOT] Comandos sincronizados no servidor sem duplicações!');
+
+        if (guildIds.length > 0) {
+            // Registra os comandos em cada servidor configurado nas variáveis (GUILD_ID, GUILD2_ID)
+            for (const id of guildIds) {
+                await rest.put(Routes.applicationGuildCommands(CLIENT_ID, id), { body: commands });
+                console.log(`[BOT] Comandos registrados com sucesso no servidor ID: ${id}`);
+            }
         } else {
+            // Caso nenhuma variável GUILD_ID seja preenchida, registra globalmente
             await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
             console.log('[BOT] Comandos sincronizados globalmente!');
         }
@@ -122,7 +133,6 @@ client.on('interactionCreate', async interaction => {
         try {
             await interaction.deferReply({ flags: 64 });
 
-            // Aplica as restrições no cargo @everyone para o canal atual
             await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
                 ViewChannel: true,
                 ReadMessageHistory: true,
@@ -139,7 +149,7 @@ client.on('interactionCreate', async interaction => {
                 .setColor('#FF6B00')
                 .setTitle('🛒 Canal Configurado para Vendas!')
                 .setDescription(
-                    `Este canal foi configurado com sucesso como **Canal de Vendas/Vitrine**.\n\n` +
+                    `Este canal foi configurado com sucesso como **Canal de Vendas/Vitrine** no servidor **${interaction.guild.name}**.\n\n` +
                     `🔒 **Permissões do @everyone ajustadas:**\n` +
                     `• ✅ Visualizar o canal e histórico de mensagens\n` +
                     `• ❌ Enviar mensagens\n` +
@@ -168,7 +178,7 @@ client.on('interactionCreate', async interaction => {
         try {
             const deleted = await interaction.channel.bulkDelete(quantidade, true);
             await interaction.reply({
-                content: `🧹 **${deleted.size}** mensagem(ns) apagada(s) com sucesso!`,
+                content: `🧹 **${deleted.size}** mensagem(ns) apagada(s) com sucesso neste canal!`,
                 flags: 64
             });
         } catch (error) {
@@ -299,18 +309,18 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // --- PAINEL TICKET (CONFIGURAÇÃO) ---
+    // --- PAINEL TICKET (CONFIGURAÇÃO POR SERVIDOR) ---
     if (interaction.isChatInputCommand() && interaction.commandName === 'painelticket') {
         const roleMenu = new ActionRowBuilder().addComponents(
             new RoleSelectMenuBuilder()
                 .setCustomId('select_cargo_atendente')
-                .setPlaceholder('Selecione os cargos que terão acesso aos tickets...')
+                .setPlaceholder('Selecione os cargos que terão acesso aos tickets neste servidor...')
                 .setMinValues(1)
                 .setMaxValues(5)
         );
 
         await interaction.reply({
-            content: '⚙️ **Configuração do Painel:** Selecione qual(is) cargo(s) da equipe terão acesso e serão notificados nos tickets:',
+            content: `⚙️ **Configuração do Painel em "${interaction.guild.name}":** Selecione qual(is) cargo(s) da equipe deste servidor terão acesso aos tickets:`,
             components: [roleMenu],
             flags: 64
         });
@@ -347,7 +357,7 @@ client.on('interactionCreate', async interaction => {
         );
 
         await interaction.channel.send({ embeds: [embedTicketPainel], components: [selectTicketMenu] });
-        await interaction.update({ content: '✅ Painel de tickets gerado com sucesso!', components: [] });
+        await interaction.update({ content: '✅ Painel de tickets gerado com sucesso neste servidor!', components: [] });
         return;
     }
 
@@ -364,7 +374,7 @@ client.on('interactionCreate', async interaction => {
         const existingChannel = guild.channels.cache.find(c => c.name === channelName);
         if (existingChannel) {
             await interaction.editReply({
-                content: `❌ Você já possui um ticket aberto! Acesse ele aqui: <#${existingChannel.id}>`
+                content: `❌ Você já possui um ticket aberto neste servidor! Acesse ele aqui: <#${existingChannel.id}>`
             });
             return;
         }
